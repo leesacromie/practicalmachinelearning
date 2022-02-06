@@ -1,0 +1,131 @@
+---
+title: "Practical Machine Learning Project"
+author: "Leesa Cromie"
+date: "2/6/2022"
+output: html_document
+---
+``` {r, ref.label = "processing", echo = FALSE}
+library(dplyr)
+library(caret)
+```
+## Executive Summary
+The Human Activity Recognition (HAR) study at [Qualitative Activity Recognition of Weight Lifting Exercises](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har) records various data points on six participants while they conducted a weight lifting exercise. The intent is to see how well each participant is conducting the exercise by fitting a model to the data that has the greatest accuracy, with minimal out of sample errors.
+
+The model that was fitted to best meet this intent was a Random Forest. An accuracy of 0.995 was able to be obtain with an out of sample error of less than 1% expected utilising k fold cross validation of 5 folds.
+
+All 20 test values were able to be predict correctly using this model.
+
+## Introduction
+The purpose of this assignment is to correctly predict how well a participant is conducting an exercise by a class. K fold cross validation of 5 folds is being used to validate this model.
+
+## Understanding the Data
+There are 5 Classes to describe how well the exercise is being conducted, A through E. The graph below indicates the breakdown of how each person is completing the exercise.
+
+```{r plot1,warning=FALSE, message=FALSE, cache=TRUE, echo = FALSE}
+library(ggplot2)
+qplot(user_name, data = training, fill = classe, 
+      xlab ="Participant Name", 
+      ylab = "Frequency")
+
+#Finding the percentage of the each class
+total <- table(training$classe)
+percent<- total/sum(total)
+countbyname<-table(training$classe,training$user_name)
+```
+
+Class A indicates that the participant is conducting the exercise correctly, with Classes B through E being varying incorrect techniques. `r percent*100` are the percentage for each class of activity.
+
+## Feature Selection
+To select the appropriate features to fit the models of the data a summary of training set was conducted. Of the 160 variables, 100 of them had all or predominately NA values. With this being the case these have been removed from the data set. In addition the following variables have been removed  **X** **raw_timestamp_part1**, **raw_timestamp_part2**, **cvtd_timestamp** and **new_window**. These 5 variables have been removed due them having a high correlation to other values. This is causing them to present as good predictors, when they are not.
+
+```{r ref.label = "clean", warning=FALSE, message=FALSE, cache=TRUE, echo=FALSE}
+```
+
+## Model Random Forest
+```{r, ref.label = "parallelstart", warning=FALSE, message=FALSE, echo = FALSE}
+```
+
+```{r ref.label = "mod", warning=FALSE, message=FALSE, cache=TRUE, echo = FALSE} 
+```
+
+```{r parallelend, echo = FALSE}
+```
+
+The random forest model is quite robust and allows for an accuracy of 0.995 when using 30 of the 54. 
+
+## Out of Sample Error and Cross Validation
+Using K-Fold validation with 5 folds the model accuracy is a maximum of 0.995 at 30 predictors and out of sample error of less than 1%
+
+```{r, error, warning=FALSE, message = FALSE, cache = TRUE, echo = FALSE}
+plot(modelFit,
+     main="Accuracy by Predictor Count",
+     xlab = "Predictors")
+plot(modelFit$finalModel,
+     main = "Error by Fold")
+```
+
+## Conclusion
+The model is able to accurately predict 20 out of 20 of the test cases supplied.
+
+## References
+The Human Activity Recognition (HAR) Available at <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har> (Accessed 18 Oct 2021)
+
+## Appendix
+
+```{r processing, warning=FALSE, message=FALSE, cache=TRUE, echo = TRUE}
+URL1<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+destfile<-"C:/Users/Leesa/Documents/Coursera/practicalmachinelearning/training.csv"
+download.file(URL1, destfile)
+training<-read.csv("training.csv", header = TRUE, na.strings = c("", "NA"))
+
+URL2<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+destfile<-"C:/Users/Leesa/Documents/Coursera/practicalmachinelearning/testing.csv"
+download.file(URL2, destfile)
+valid<-read.csv("testing.csv", header = TRUE, na.strings = c("", "NA"))
+
+```
+```{r clean,warning=FALSE, message=FALSE, cache=TRUE, echo = TRUE}
+library(dplyr)
+library(caret)
+
+training$classe <- as.factor(training$classe)
+training$user_name<-as.factor(training$user_name)
+training = training[,!sapply(training, function(x) mean(is.na(x)))>0.95]
+
+#Remove time stamps
+
+training <- training[c(-1,-3,-4,-5,-6)]
+set.seed(213456)
+inTrain <- createDataPartition(y=training$classe,
+                              p=0.6, list=FALSE)
+training <- training[inTrain,]
+testing <- training[-inTrain,]
+```
+
+```{r parallelstart, warning = FALSE, message = FALSE, cache = TRUE, echo = TRUE}
+library(iterators)
+library(foreach)
+library(parallel)
+library(doParallel)
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+
+```
+
+```{r, mod, warning=FALSE, message=FALSE, cache=TRUE, echo = TRUE}
+
+modcntrl <- trainControl(method="cv",number=5, allowParallel = TRUE)
+modelFit <- train(classe ~.,data=training, method="rf", trControl = modcntrl)
+modelFit
+pred <- predict(modelFit,testing)
+confusionMatrix(pred,testing$classe)
+
+predictions<-predict(modelFit, newdata=valid)
+```
+
+```{r parallelend, warning = FALSE, message = FALSE, cache = TRUE, echo = TRUE}
+unregister <- function() {
+  env <- foreach:::.foreachGlobals
+  rm(list=ls(name=env), pos=env)
+}
+```
